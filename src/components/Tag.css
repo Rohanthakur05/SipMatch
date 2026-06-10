@@ -1,0 +1,56 @@
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  transition: all var(--transition-base);
+  white-space: nowrap;
+}
+
+.tag-default {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.tag-primary {
+  background: rgba(108, 99, 255, 0.15);
+  color: var(--primary-light);
+  border: 1px solid rgba(108, 99, 255, 0.3);
+}
+
+.tag-secondary {
+  background: rgba(255, 77, 141, 0.15);
+  color: var(--secondary-light);
+  border: 1px solid rgba(255, 77, 141, 0.3);
+}
+
+.tag-accent {
+  background: rgba(245, 196, 81, 0.15);
+  color: var(--accent);
+  border: 1px solid rgba(245, 196, 81, 0.3);
+}
+
+.tag-clickable {
+  cursor: pointer;
+}
+
+.tag-clickable:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.tag-selected {
+  background: var(--gradient-primary);
+  color: white;
+  border-color: transparent;
+  box-shadow: var(--shadow-glow-primary);
+}
+
+.tag-icon {
+  font-size: 1em;
+  line-height: 1;
+}
