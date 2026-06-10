@@ -206,18 +206,29 @@
   color: #FF3366;
 }
 
-.comp-reasons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.comp-subtitle {
+  font-size: 0.9rem;
+  color: #aaa;
+  margin-bottom: 8px;
 }
 
-.reason-tag {
-  font-size: 0.75rem;
-  background: rgba(255, 51, 102, 0.1);
+.comp-reasons-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reason-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: #ddd;
+}
+
+.reason-check {
   color: #FF3366;
-  padding: 4px 8px;
-  border-radius: 8px;
+  font-weight: bold;
 }
 
 .bio-section {

@@ -176,9 +176,12 @@ export default function Discover() {
             <div className="comp-header">
               <span className="comp-score">{profile.compatibility}% Match</span>
             </div>
-            <div className="comp-reasons">
+            <div className="comp-subtitle">Because:</div>
+            <div className="comp-reasons-list">
               {profile.reasons.map((reason, i) => (
-                <span key={i} className="reason-tag">{reason}</span>
+                <div key={i} className="reason-item">
+                  <span className="reason-check">✓</span> {reason}
+                </div>
               ))}
             </div>
           </div>
