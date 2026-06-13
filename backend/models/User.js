@@ -43,6 +43,39 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    // Onboarding / preference fields
+    age: {
+      type: Number,
+      default: null,
+    },
+    gender: {
+      type: String,
+      default: '',
+    },
+    location: {
+      type: String,
+      default: '',
+    },
+    drinkPreferences: {
+      type: [String],
+      default: [],
+    },
+    favoriteDrink: {
+      type: String,
+      default: '',
+    },
+    drinkingHabits: {
+      type: String,
+      default: '',
+    },
+    interests: {
+      type: [String],
+      default: [],
+    },
+    musicPreferences: {
+      type: [String],
+      default: [],
+    },
   },
   {
     timestamps: true,

@@ -1,146 +1,162 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './Discover.css';
 
-const MOCK_PROFILES = [
-  {
-    id: 1,
-    name: 'Sarah',
-    age: 26,
-    location: '2 miles away',
-    photos: ['https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&q=80&w=800'],
-    verified: true,
-    drinkPersonality: 'Whiskey Connoisseur 🥃',
-    compatibility: 91,
-    reasons: ['Loves Whiskey', 'Enjoys Live Music', 'Similar Music Taste'],
-    bio: 'Looking for someone to explore hidden speakeasies with. I take my old fashioneds seriously.',
-    interests: ['Live Jazz', 'Photography', 'Travel'],
-    favoriteDrinks: ['Old Fashioned', 'Manhattan']
-  },
-  {
-    id: 2,
-    name: 'Michael',
-    age: 28,
-    location: '5 miles away',
-    photos: ['https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&q=80&w=800'],
-    verified: true,
-    drinkPersonality: 'Craft Beer Hunter 🍺',
-    compatibility: 85,
-    reasons: ['Weekend Social Drinker', 'Loves Dogs', 'Outdoorsy'],
-    bio: 'IPA enthusiast. If you know a good local brewery, we will get along great.',
-    interests: ['Hiking', 'Dogs', 'Breweries'],
-    favoriteDrinks: ['IPA', 'Stout']
-  },
-  {
-    id: 3,
-    name: 'Emily',
-    age: 24,
-    location: '1 mile away',
-    photos: ['https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=800'],
-    verified: false,
-    drinkPersonality: 'Cocktail Explorer 🍸',
-    compatibility: 72,
-    reasons: ['Loves Dancing', 'Foodie', 'Night Owl'],
-    bio: 'Espresso martinis are my love language.',
-    interests: ['Dancing', 'Sushi', 'Art Galleries'],
-    favoriteDrinks: ['Espresso Martini', 'Margarita']
-  }
+const API_BASE = 'http://localhost:5000/api';
+
+// Fallback placeholder photos for seeded/test accounts without Cloudinary photos
+const FALLBACK_PHOTOS = [
+  'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&q=80&w=800',
+  'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&q=80&w=800',
+  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=800',
+  'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=800',
 ];
 
+const getPhoto = (user, fallbackIdx = 0) => {
+  if (user.primaryPhoto) return user.primaryPhoto;
+  if (user.profilePhotos?.length > 0) return user.profilePhotos[0];
+  return FALLBACK_PHOTOS[fallbackIdx % FALLBACK_PHOTOS.length];
+};
+
 export default function Discover() {
-  const [profiles, setProfiles] = useState(MOCK_PROFILES);
+  const navigate = useNavigate();
+  const [profiles, setProfiles] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [superLikes, setSuperLikes] = useState(5);
   const [showMatchModal, setShowMatchModal] = useState(false);
-  const [matchedProfile, setMatchedProfile] = useState(null);
+  const [matchData, setMatchData] = useState(null); // { partner, compatibility }
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStartPos = useRef({ x: 0, y: 0 });
   const cardRef = useRef(null);
 
+  // ── Fetch discover feed ──────────────────────────────────────────────────
+  const fetchFeed = useCallback(async () => {
+    const token = localStorage.getItem('token');
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/discover`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to load feed.');
+      setProfiles(data.feed || []);
+      setCurrentIndex(0);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchFeed();
+  }, [fetchFeed]);
+
+  // ── Send swipe to backend ─────────────────────────────────────────────────
+  const sendSwipe = async (targetUserId, action) => {
+    const token = localStorage.getItem('token');
+    if (!token) return null;
+    try {
+      const res = await fetch(`${API_BASE}/swipes`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ targetUserId, action }),
+      });
+      return await res.json();
+    } catch {
+      return null;
+    }
+  };
+
+  // ── Drag handlers ────────────────────────────────────────────────────────
   const handlePointerDown = (e) => {
     setIsDragging(true);
     dragStartPos.current = { x: e.clientX, y: e.clientY };
-    if (cardRef.current) {
-      cardRef.current.setPointerCapture(e.pointerId);
-    }
+    cardRef.current?.setPointerCapture(e.pointerId);
   };
 
   const handlePointerMove = (e) => {
     if (!isDragging) return;
-    const diffX = e.clientX - dragStartPos.current.x;
-    const diffY = e.clientY - dragStartPos.current.y;
-    setDragOffset({ x: diffX, y: diffY });
+    setDragOffset({
+      x: e.clientX - dragStartPos.current.x,
+      y: e.clientY - dragStartPos.current.y,
+    });
   };
 
   const handlePointerUp = (e) => {
     if (!isDragging) return;
     setIsDragging(false);
-    if (cardRef.current) {
-      cardRef.current.releasePointerCapture(e.pointerId);
-    }
+    cardRef.current?.releasePointerCapture(e.pointerId);
 
-    const threshold = 100;
-    
-    // Check swipe directions
-    if (dragOffset.x > threshold) {
-      handleSwipe('right');
-    } else if (dragOffset.x < -threshold) {
-      handleSwipe('left');
-    } else if (dragOffset.y < -threshold && Math.abs(dragOffset.x) < 50) {
-      handleSwipe('up');
-    } else {
-      // Snap back
-      setDragOffset({ x: 0, y: 0 });
-    }
+    const THRESHOLD = 100;
+    if (dragOffset.x > THRESHOLD) handleSwipe('like');
+    else if (dragOffset.x < -THRESHOLD) handleSwipe('pass');
+    else if (dragOffset.y < -THRESHOLD && Math.abs(dragOffset.x) < 50) handleSwipe('superlike');
+    else setDragOffset({ x: 0, y: 0 });
   };
 
-  const handleSwipe = (direction) => {
-    if (direction === 'up') {
-      if (superLikes > 0) {
-        setSuperLikes(prev => prev - 1);
-      } else {
-        // If no super likes, snap back (can add toast here later)
-        setDragOffset({ x: 0, y: 0 });
-        return;
-      }
+  // ── Core swipe logic ─────────────────────────────────────────────────────
+  const handleSwipe = async (action) => {
+    const profile = profiles[currentIndex];
+    if (!profile) return;
+
+    if (action === 'superlike') {
+      if (superLikes <= 0) { setDragOffset({ x: 0, y: 0 }); return; }
+      setSuperLikes(prev => prev - 1);
     }
 
-    // Move card off screen
-    const endX = direction === 'right' ? window.innerWidth : direction === 'left' ? -window.innerWidth : 0;
-    const endY = direction === 'up' ? -window.innerHeight : 0;
+    // Fly the card off-screen
+    const endX = action === 'like' ? window.innerWidth * 1.5 :
+                 action === 'pass' ? -window.innerWidth * 1.5 : 0;
+    const endY = action === 'superlike' ? -window.innerHeight * 1.5 : 0;
     setDragOffset({ x: endX, y: endY });
 
-    setTimeout(() => {
-      // Logic for matching (mock 100% chance on right or up for demo purposes)
-      if (direction === 'right' || direction === 'up') {
-        const isMatch = true; 
-        if (isMatch) {
-          setMatchedProfile(profiles[currentIndex]);
-          setShowMatchModal(true);
-        }
-      }
+    // Fire API swipe
+    const result = await sendSwipe(profile._id, action);
 
+    setTimeout(() => {
+      if (result?.matchCreated) {
+        setMatchData({
+          partner: result.match?.users?.find(u => u._id !== profile._id) || profile,
+          compatibility: result.compatibility,
+        });
+        setShowMatchModal(true);
+      }
       setCurrentIndex(prev => prev + 1);
       setDragOffset({ x: 0, y: 0 });
-    }, 300); // Wait for animation
+    }, 300);
   };
 
-  const renderCard = (profile, isTop) => {
-    if (!profile) return null;
+  // ── Swipe label overlay ──────────────────────────────────────────────────
+  const getSwipeLabel = () => {
+    if (dragOffset.x > 60) return { text: 'LIKE', color: '#10B981', side: 'left' };
+    if (dragOffset.x < -60) return { text: 'NOPE', color: '#EF4444', side: 'right' };
+    if (dragOffset.y < -60) return { text: 'SUPER', color: '#6C63FF', side: 'center' };
+    return null;
+  };
 
-    const style = isTop ? {
-      transform: `translate(${dragOffset.x}px, ${dragOffset.y}px) rotate(${dragOffset.x * 0.05}deg)`,
-      zIndex: 2
-    } : {
-      transform: `scale(${0.95 + Math.min(Math.abs(dragOffset.x) / 1000, 0.05)})`,
-      opacity: 0.8 + Math.min(Math.abs(dragOffset.x) / 500, 0.2),
-      zIndex: 1
-    };
+  // ── Card renderer ────────────────────────────────────────────────────────
+  const renderCard = (profile, isTop, index) => {
+    if (!profile) return null;
+    const label = isTop ? getSwipeLabel() : null;
+    const photo = getPhoto(profile, index);
+    const compat = profile.compatibility || { score: 0, reasons: [] };
+
+    const style = isTop
+      ? { transform: `translate(${dragOffset.x}px,${dragOffset.y}px) rotate(${dragOffset.x * 0.05}deg)`, zIndex: 2 }
+      : { transform: `scale(${0.95 + Math.min(Math.abs(dragOffset.x) / 1000, 0.05)})`, opacity: 0.8 + Math.min(Math.abs(dragOffset.x) / 500, 0.2), zIndex: 1 };
 
     return (
-      <div 
-        key={profile.id}
+      <div
+        key={profile._id || index}
         ref={isTop ? cardRef : null}
         className={`profile-card ${isDragging && isTop ? 'dragging' : ''}`}
         style={style}
@@ -149,127 +165,184 @@ export default function Discover() {
         onPointerUp={isTop ? handlePointerUp : undefined}
         onPointerCancel={isTop ? handlePointerUp : undefined}
       >
+        {/* Swipe indicator labels */}
+        {label && (
+          <div
+            className="swipe-label"
+            style={{
+              color: label.color,
+              borderColor: label.color,
+              left: label.side === 'left' ? '16px' : undefined,
+              right: label.side === 'right' ? '16px' : undefined,
+              margin: label.side === 'center' ? '0 auto' : undefined,
+              opacity: Math.min(1, Math.abs(dragOffset.x || dragOffset.y) / 80),
+            }}
+          >
+            {label.text}
+          </div>
+        )}
+
         <div className="card-image-container">
-          <img src={profile.photos[0]} alt={profile.name} className="card-image" draggable="false" />
+          <img src={photo} alt={profile.name} className="card-image" draggable="false" />
           <div className="image-overlay"></div>
           <div className="card-indicators">
-            {profile.photos.map((_, i) => (
+            {(profile.profilePhotos?.length > 0 ? profile.profilePhotos : [photo]).map((_, i) => (
               <div key={i} className={`indicator ${i === 0 ? 'active' : ''}`}></div>
             ))}
           </div>
         </div>
-        
+
         <div className="card-content">
           <div className="profile-header">
             <div className="name-age">
               <h2 className="name">{profile.name}</h2>
-              <span className="age">{profile.age}</span>
-              {profile.verified && <span className="verified-badge">✓</span>}
-            </div>
-          </div>
-          
-          <div className="location">📍 {profile.location}</div>
-          
-          <div className="drink-personality">{profile.drinkPersonality}</div>
-          
-          <div className="compatibility-section">
-            <div className="comp-header">
-              <span className="comp-score">{profile.compatibility}% Match</span>
-            </div>
-            <div className="comp-subtitle">Because:</div>
-            <div className="comp-reasons-list">
-              {profile.reasons.map((reason, i) => (
-                <div key={i} className="reason-item">
-                  <span className="reason-check">✓</span> {reason}
-                </div>
-              ))}
-            </div>
-          </div>
-          
-          <div className="bio-section">
-            <div className="section-title">About Me</div>
-            <p className="bio-text">{profile.bio}</p>
-          </div>
-          
-          <div className="bio-section">
-            <div className="section-title">Interests</div>
-            <div className="tags-container">
-              {profile.interests.map((interest, i) => (
-                <span key={i} className="tag">{interest}</span>
-              ))}
+              <span className="age">{profile.age || '?'}</span>
             </div>
           </div>
 
-          <div className="bio-section">
-            <div className="section-title">Favorite Drinks</div>
-            <div className="tags-container">
-              {profile.favoriteDrinks.map((drink, i) => (
-                <span key={i} className="tag">{drink}</span>
-              ))}
+          <div className="location">📍 {profile.location || 'Nearby'}</div>
+
+          {profile.favoriteDrink && (
+            <div className="drink-personality">🥃 {profile.favoriteDrink} Lover</div>
+          )}
+
+          {compat.score > 0 && (
+            <div className="compatibility-section">
+              <div className="comp-header">
+                <span className="comp-score">{compat.score}% Match</span>
+              </div>
+              <div className="comp-subtitle">Because:</div>
+              <div className="comp-reasons-list">
+                {compat.reasons.slice(0, 3).map((reason, i) => (
+                  <div key={i} className="reason-item">
+                    <span className="reason-check">✓</span> {reason}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+
+          {profile.bio && (
+            <div className="bio-section">
+              <div className="section-title">About Me</div>
+              <p className="bio-text">{profile.bio}</p>
+            </div>
+          )}
+
+          {profile.interests?.length > 0 && (
+            <div className="bio-section">
+              <div className="section-title">Interests</div>
+              <div className="tags-container">
+                {profile.interests.slice(0, 4).map((interest, i) => (
+                  <span key={i} className="tag">{interest}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {profile.drinkPreferences?.length > 0 && (
+            <div className="bio-section">
+              <div className="section-title">Favorite Drinks</div>
+              <div className="tags-container">
+                {profile.drinkPreferences.slice(0, 3).map((drink, i) => (
+                  <span key={i} className="tag">{drink}</span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
   };
 
+  // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="discover-page">
       <div className="discover-header">
         <h1 className="header-title">Discover</h1>
-        <div className="premium-counter">
-          ⭐ {superLikes} Super Likes
-        </div>
+        <div className="premium-counter">⭐ {superLikes} Super Likes</div>
       </div>
 
       <div className="cards-container">
-        {currentIndex < profiles.length ? (
+        {loading ? (
+          <div className="empty-state">
+            <div className="empty-illustration">🍸</div>
+            <h3>Finding your matches...</h3>
+          </div>
+        ) : error ? (
+          <div className="empty-state">
+            <div className="empty-illustration">⚠️</div>
+            <h3>Couldn't load profiles</h3>
+            <p>{error}</p>
+            <button className="btn-primary" onClick={fetchFeed}>Try Again</button>
+          </div>
+        ) : currentIndex < profiles.length ? (
           <>
-            {/* Render next card underneath */}
-            {currentIndex + 1 < profiles.length && renderCard(profiles[currentIndex + 1], false)}
-            {/* Render top card */}
-            {renderCard(profiles[currentIndex], true)}
+            {currentIndex + 1 < profiles.length && renderCard(profiles[currentIndex + 1], false, currentIndex + 1)}
+            {renderCard(profiles[currentIndex], true, currentIndex)}
           </>
         ) : (
           <div className="empty-state">
             <div className="empty-illustration">🍷</div>
-            <h3>Out of profiles!</h3>
-            <p>Expand your distance or check back later for more potential matches.</p>
-            <button className="btn-primary" onClick={() => setCurrentIndex(0)}>Refresh Profiles</button>
+            <h3>You've seen everyone!</h3>
+            <p>Expand your distance or check back later for new profiles.</p>
+            <button className="btn-primary" onClick={fetchFeed}>Refresh</button>
           </div>
         )}
 
-        {currentIndex < profiles.length && (
+        {!loading && !error && currentIndex < profiles.length && (
           <div className="action-buttons">
-            <button className="action-btn btn-pass" onClick={() => handleSwipe('left')}>✕</button>
-            <button className="action-btn btn-super" onClick={() => handleSwipe('up')}>⭐</button>
-            <button className="action-btn btn-like" onClick={() => handleSwipe('right')}>❤️</button>
+            <button className="action-btn btn-pass" onClick={() => handleSwipe('pass')}>✕</button>
+            <button className="action-btn btn-super" onClick={() => handleSwipe('superlike')}>⭐</button>
+            <button className="action-btn btn-like" onClick={() => handleSwipe('like')}>❤️</button>
           </div>
         )}
       </div>
 
-      {showMatchModal && matchedProfile && (
+      {/* Match Modal */}
+      {showMatchModal && matchData && (
         <div className="match-modal-overlay">
           <div className="match-modal">
-            <h2 className="match-title">It's a Match!</h2>
-            
+            <h2 className="match-title">It's a Match! 🥂</h2>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', textAlign: 'center' }}>
+              You and {matchData.partner?.name} both liked each other!
+            </p>
+
             <div className="match-photos">
-              <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200" alt="You" className="match-photo user-photo" />
+              <img
+                src={localStorage.getItem('userPhoto') || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200'}
+                alt="You"
+                className="match-photo user-photo"
+              />
               <div className="match-icon">🥂</div>
-              <img src={matchedProfile.photos[0]} alt={matchedProfile.name} className="match-photo" />
+              <img
+                src={getPhoto(matchData.partner, 0)}
+                alt={matchData.partner?.name}
+                className="match-photo"
+              />
             </div>
 
-            <div className="mutual-interests">
-              <h4>Mutual Interests</h4>
-              <div className="mutual-tags">
-                <span className="reason-tag">Live Music</span>
-                <span className="reason-tag">Craft Cocktails</span>
+            {matchData.compatibility?.score > 0 && (
+              <div className="mutual-interests">
+                <h4>{matchData.compatibility.score}% Compatibility</h4>
+                <div className="mutual-tags">
+                  {matchData.compatibility.reasons.slice(0, 2).map((r, i) => (
+                    <span key={i} className="reason-tag">{r}</span>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="match-buttons">
-              <button className="btn-primary" onClick={() => setShowMatchModal(false)}>Start Chatting</button>
-              <button className="btn-secondary" onClick={() => setShowMatchModal(false)}>Keep Exploring</button>
+              <button
+                className="btn-primary"
+                onClick={() => { setShowMatchModal(false); navigate('/chat'); }}
+              >
+                Start Chatting
+              </button>
+              <button className="btn-secondary" onClick={() => setShowMatchModal(false)}>
+                Keep Exploring
+              </button>
             </div>
           </div>
         </div>
