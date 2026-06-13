@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Onboarding.css';
+
+const API_BASE = 'http://localhost:5000/api';
 
 const BIO_SUGGESTIONS = {
   "Funny": [
@@ -61,6 +63,9 @@ const Onboarding = () => {
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeBioCategory, setActiveBioCategory] = useState("Funny");
+  const [uploadingIndex, setUploadingIndex] = useState(null); // index being uploaded
+  const fileInputRef = useRef(null);
+  const activeSlotRef = useRef(null); // which slot the file dialog was opened for
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -146,18 +151,69 @@ const Onboarding = () => {
     updateFormData(field, newList);
   };
 
-  // Mock photo upload
+  // Open file picker for the given slot
   const handlePhotoUpload = (index) => {
-    const randomId = Math.floor(Math.random() * 1000);
-    const fakeUrl = `https://picsum.photos/seed/${randomId}/300/400`;
-    
-    const newPhotos = [...formData.photos];
-    newPhotos[index] = fakeUrl;
-    updateFormData('photos', newPhotos);
+    activeSlotRef.current = index;
+    fileInputRef.current?.click();
   };
 
-  const removePhoto = (index, e) => {
+  // Handle file selection → upload to backend
+  const handleFileSelected = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset so same file can be re-selected if needed
+    e.target.value = '';
+
+    const index = activeSlotRef.current;
+    const token = localStorage.getItem('token');
+
+    if (!token) {
+      setErrors(prev => ({ ...prev, photos: 'Please log in before uploading photos.' }));
+      return;
+    }
+
+    setUploadingIndex(index);
+
+    const formPayload = new FormData();
+    formPayload.append('photo', file);
+
+    try {
+      const res = await fetch(`${API_BASE}/upload/profile-photo`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formPayload,
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.message || 'Upload failed');
+
+      const newPhotos = [...formData.photos];
+      newPhotos[index] = data.photoUrl;
+      updateFormData('photos', newPhotos);
+    } catch (err) {
+      setErrors(prev => ({ ...prev, photos: err.message }));
+    } finally {
+      setUploadingIndex(null);
+    }
+  };
+
+  const removePhoto = async (index, e) => {
     e.stopPropagation();
+    const photoUrl = formData.photos[index];
+    if (!photoUrl) return;
+
+    const token = localStorage.getItem('token');
+    // If token exists, also remove from backend; otherwise just clear UI
+    if (token) {
+      try {
+        await fetch(`${API_BASE}/upload/profile-photo`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ photoUrl }),
+        });
+      } catch (_) { /* ignore network errors on delete */ }
+    }
+
     const newPhotos = [...formData.photos];
     newPhotos[index] = null;
     updateFormData('photos', newPhotos);
@@ -260,17 +316,32 @@ const Onboarding = () => {
 
             {errors.photos && <div className="error-message" style={{marginBottom: '1.5rem'}}>{errors.photos}</div>}
             
+            {/* Hidden file input – programmatically triggered */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              style={{ display: 'none' }}
+              onChange={handleFileSelected}
+            />
+
             <div className="photo-grid">
               {formData.photos.map((photo, index) => (
                 <div 
                   key={index} 
-                  className={`photo-slot ${photo ? 'has-photo' : ''}`}
-                  onClick={() => !photo && handlePhotoUpload(index)}
+                  className={`photo-slot ${photo ? 'has-photo' : ''} ${uploadingIndex === index ? 'uploading' : ''}`}
+                  onClick={() => !photo && uploadingIndex === null && handlePhotoUpload(index)}
                 >
-                  {photo ? (
+                  {uploadingIndex === index ? (
+                    <div className="uploading-indicator">
+                      <div className="spinner"></div>
+                      <span>Uploading...</span>
+                    </div>
+                  ) : photo ? (
                     <>
                       <img src={photo} alt={`Upload ${index+1}`} className="photo-img" />
                       <button className="remove-photo" onClick={(e) => removePhoto(index, e)}>×</button>
+                      {index === 0 && <div className="main-photo-badge">Main</div>}
                     </>
                   ) : (
                     <div className="add-photo-icon">+</div>

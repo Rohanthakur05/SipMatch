@@ -23,7 +23,23 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    // Legacy single image (kept for backwards compat)
     profileImage: {
+      type: String,
+      default: '',
+    },
+    // Cloudinary photo array (min 4, max 6)
+    profilePhotos: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: function (v) {
+          return v.length <= 6;
+        },
+        message: 'Maximum 6 photos allowed.',
+      },
+    },
+    primaryPhoto: {
       type: String,
       default: '',
     },
