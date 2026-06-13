@@ -76,6 +76,44 @@ const userSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    // ── SipMatch Personality Layer ──────────────────────────────────
+    signatureSip: {
+      type: String,
+      default: '',
+    },
+    drinkingMoment: {
+      type: String,
+      default: '',
+    },
+    nightOutStyle: {
+      type: [String],
+      default: [],
+    },
+    socialVibe: {
+      type: String,
+      default: '',
+    },
+    firstRoundOrder: {
+      type: String,
+      default: '',
+    },
+    prompts: {
+      type: [
+        {
+          question: { type: String, required: true },
+          answer: { type: String, required: true },
+        },
+      ],
+      default: [],
+      validate: {
+        validator: (v) => v.length <= 5,
+        message: 'Maximum 5 prompts allowed.',
+      },
+    },
+    personalityBadge: {
+      type: String,
+      default: '',
+    },
   },
   {
     timestamps: true,

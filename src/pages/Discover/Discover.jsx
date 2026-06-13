@@ -202,9 +202,14 @@ export default function Discover() {
 
           <div className="location">📍 {profile.location || 'Nearby'}</div>
 
-          {profile.favoriteDrink && (
-            <div className="drink-personality">🥃 {profile.favoriteDrink} Lover</div>
+          {profile.personalityBadge && (
+            <div className="drink-personality">{profile.personalityBadge}</div>
           )}
+
+          <div className="tags-container" style={{ marginBottom: '16px' }}>
+            {profile.drinkingMoment && <span className="tag highlight">{profile.drinkingMoment}</span>}
+            {profile.socialVibe && <span className="tag highlight">{profile.socialVibe}</span>}
+          </div>
 
           {compat.score > 0 && (
             <div className="compatibility-section">
@@ -218,6 +223,15 @@ export default function Discover() {
                     <span className="reason-check">✓</span> {reason}
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {profile.prompts && profile.prompts.length > 0 && (
+            <div className="bio-section">
+              <div className="prompt-display-card" style={{ marginBottom: '16px', background: 'rgba(0,0,0,0.2)' }}>
+                <div className="prompt-question" style={{ color: 'var(--primary)' }}>{profile.prompts[0].question}</div>
+                <div className="prompt-answer" style={{ fontSize: '1rem' }}>"{profile.prompts[0].answer}"</div>
               </div>
             </div>
           )}
