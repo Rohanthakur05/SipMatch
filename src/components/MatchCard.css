@@ -1,0 +1,164 @@
+.match-card {
+  background: rgba(30, 30, 36, 0.65);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  transition: transform 0.2s, box-shadow 0.2s;
+  width: 100%;
+}
+
+.match-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 35px rgba(0,0,0,0.4);
+}
+
+.match-card-header {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.match-avatar-container {
+  position: relative;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.match-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #FF3366;
+}
+
+.active-indicator {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 14px;
+  height: 14px;
+  background-color: #34C759;
+  border: 2px solid #1E1E24;
+  border-radius: 50%;
+}
+
+.match-info {
+  flex: 1;
+}
+
+.match-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.match-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: white;
+  margin: 0;
+}
+
+.match-age {
+  font-size: 1rem;
+  color: #aaa;
+}
+
+.match-status {
+  font-size: 0.8rem;
+  color: #888;
+  margin-bottom: 8px;
+}
+
+.match-badge {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  color: #ddd;
+}
+
+.match-insights {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.insight-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.insight-score {
+  font-weight: 700;
+  color: #FF3366;
+}
+
+.insight-subtitle {
+  font-size: 0.85rem;
+  color: #aaa;
+  margin-bottom: 6px;
+}
+
+.insight-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.insight-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: #ccc;
+}
+
+.insight-check {
+  color: #FF3366;
+  font-weight: bold;
+}
+
+.match-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.btn-chat {
+  flex: 1;
+  background: linear-gradient(to right, #FF3366, #FF6B35);
+  color: white;
+  border: none;
+  padding: 10px;
+  border-radius: 20px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-profile {
+  flex: 1;
+  background: transparent;
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 10px;
+  border-radius: 20px;
+  font-weight: 600;
+  cursor: pointer;
+}
