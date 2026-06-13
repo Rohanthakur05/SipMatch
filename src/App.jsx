@@ -8,7 +8,7 @@ import Discover from './pages/Discover/Discover';
 import Chat from './pages/Chat/Chat';
 import ChatRoom from './pages/Chat/ChatRoom';
 import Profile from './pages/Profile/Profile';
-// import Settings from './pages/Settings/Settings';
+import Settings from './pages/Settings/Settings';
 // import BottomNav from './components/BottomNav';
 
 const pagesWithNav = ['/discover', '/matches', '/chat', '/profile'];
@@ -30,7 +30,7 @@ export default function App() {
           <Route path="/chat" element={<Chat />} />
           <Route path="/chat/:id" element={<ChatRoom />} />
           <Route path="/profile" element={<Profile />} />
-          {/* <Route path="/settings" element={<Settings />} /> */}
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </div>
       {/* {showNav && <BottomNav />} */}
