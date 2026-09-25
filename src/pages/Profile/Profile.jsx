@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  FiSettings, FiEdit2, FiCheckCircle, FiInfo, FiPlus, 
-  FiX, FiImage, FiHeart, FiActivity 
+import {
+  FiSettings, FiEdit2, FiCheckCircle, FiInfo, FiPlus,
+  FiX, FiHeart, FiActivity
 } from 'react-icons/fi';
 import './Profile.css';
 import { calculateBadge } from '../../utils/badgeEngine';
@@ -11,30 +11,30 @@ const API_BASE = 'http://localhost:5000/api';
 
 export default function Profile() {
   const navigate = useNavigate();
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  
-  // Minimal edit state just for bio for now
+  const [profile,  setProfile]  = useState(null);
+  const [stats,    setStats]    = useState({ likesReceived: null, matchCount: null });
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState('');
   const [isEditing, setIsEditing] = useState(false);
-  const [editBio, setEditBio] = useState('');
+  const [editBio,   setEditBio]   = useState('');
 
   const fetchProfile = useCallback(async () => {
     const token = localStorage.getItem('token');
-    if (!token) {
-      navigate('/login');
-      return;
-    }
+    if (!token) { navigate('/login'); return; }
     try {
-      const res = await fetch(`${API_BASE}/profile/me`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error('Failed to load profile');
-      const data = await res.json();
-      // compute client-side badge if missing
+      const [profileRes, statsRes] = await Promise.all([
+        fetch(`${API_BASE}/profile/me`,    { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_BASE}/profile/stats`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      if (!profileRes.ok) throw new Error('Failed to load profile');
+      const data      = await profileRes.json();
       data.personalityBadge = data.personalityBadge || calculateBadge(data);
       setProfile(data);
       setEditBio(data.bio || '');
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        setStats(statsData.stats || {});
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -42,9 +42,7 @@ export default function Profile() {
     }
   }, [navigate]);
 
-  useEffect(() => {
-    fetchProfile();
-  }, [fetchProfile]);
+  useEffect(() => { fetchProfile(); }, [fetchProfile]);
 
   const calculateCompletion = (p) => {
     if (!p) return 0;
@@ -144,13 +142,17 @@ export default function Profile() {
         {/* Match Statistics */}
         <div className="stats-container animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
           <div className="stat-card">
-            <FiHeart className="stat-label" style={{ fontSize: '20px', color: 'var(--secondary)' }} />
-            <span className="stat-value">--</span>
-            <span className="stat-label">Total Likes</span>
+            <FiHeart style={{ fontSize: '20px', color: 'var(--secondary)', marginBottom: '4px' }} />
+            <span className="stat-value">
+              {stats.likesReceived !== null ? stats.likesReceived : '…'}
+            </span>
+            <span className="stat-label">Likes Received</span>
           </div>
           <div className="stat-card">
-            <FiActivity className="stat-label" style={{ fontSize: '20px', color: 'var(--primary)' }} />
-            <span className="stat-value">--</span>
+            <FiActivity style={{ fontSize: '20px', color: 'var(--primary)', marginBottom: '4px' }} />
+            <span className="stat-value">
+              {stats.matchCount !== null ? stats.matchCount : '…'}
+            </span>
             <span className="stat-label">Matches</span>
           </div>
         </div>

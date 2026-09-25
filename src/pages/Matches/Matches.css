@@ -169,6 +169,28 @@
   font-style: italic;
 }
 
+.match-reasons-preview {
+  font-size: 0.8rem;
+  color: #bbb;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.reason-line {
+  color: #ddd;
+}
+
+.reason-line-item {
+  color: #999;
+  padding-left: 4px;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Chat button */
 .match-chat-btn {
   width: 42px;

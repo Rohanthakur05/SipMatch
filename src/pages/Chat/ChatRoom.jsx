@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  FiChevronLeft, FiMoreVertical, FiSend, FiCheck, FiCheckCircle,
+  FiChevronLeft, FiMoreVertical, FiSend, FiCheck, FiCheckCircle, FiInfo, FiX,
 } from 'react-icons/fi';
 import { connectSocket, getSocket } from '../../utils/socketService';
 import './Chat.css';
@@ -79,6 +79,7 @@ export default function ChatRoom() {
   const [partnerOnline, setPartnerOnline] = useState(false);
   const [inputError,    setInputError]    = useState('');
   const [allRead,       setAllRead]       = useState(false);
+  const [showContext,   setShowContext]   = useState(false);
 
   const messagesEndRef  = useRef(null);
   const typingTimerRef  = useRef(null);
@@ -111,7 +112,9 @@ export default function ChatRoom() {
       });
       const msgData = await msgRes.json();
       if (!msgRes.ok) throw new Error(msgData.message || 'Failed to load messages.');
-      setMessages(msgData.messages || []);
+      const loadedMsgs = msgData.messages || [];
+      setMessages(loadedMsgs);
+      if (loadedMsgs.length === 0) setShowContext(true);
     } catch (err) {
       setMsgError(err.message);
     } finally {
@@ -339,24 +342,58 @@ export default function ChatRoom() {
           {compatScore > 0 && (
             <span className="header-compat">❤️ {compatScore}%</span>
           )}
-          <button className="icon-btn"><FiMoreVertical /></button>
+          <button className={`icon-btn profile-toggle-btn ${showContext ? 'active' : ''}`} onClick={() => setShowContext(!showContext)}>
+            <FiInfo />
+          </button>
         </div>
       </div>
 
       {/* ── Messages area ───────────────────────────────────────────────── */}
       <div className="messages-area">
-        {/* Match reminder / compatibility card */}
-        {compatReasons.length > 0 && (
-          <div className="match-reminder glass">
-            <h3 className="reminder-title">You matched because…</h3>
-            <div className="reminder-list">
-              {compatReasons.slice(0, 3).map((reason, i) => (
-                <div key={i} className="reminder-item">
-                  <span><FiCheckCircle /></span>
-                  {reason}
-                </div>
-              ))}
+        {/* Chat Profile Context (Collapsible) */}
+        {showContext && partner && (
+          <div className="chat-profile-context glass animate-fadeInDown">
+            <div className="context-header">
+              <span className="context-title">{partner.name}'s Vibe</span>
+              <button className="context-close" onClick={() => setShowContext(false)}><FiX /></button>
             </div>
+            <div className="context-grid">
+              {partner.signatureSip && (
+                <div className="context-row">
+                  <span className="c-icon">🥃</span>
+                  <div className="c-text">
+                    <span className="c-label">Signature Sip</span>
+                    <span className="c-value">{partner.signatureSip}</span>
+                  </div>
+                </div>
+              )}
+              {partner.nightOutStyle?.length > 0 && (
+                <div className="context-row">
+                  <span className="c-icon">🌃</span>
+                  <div className="c-text">
+                    <span className="c-label">Night Out</span>
+                    <span className="c-value">{partner.nightOutStyle.slice(0, 2).join(', ')}</span>
+                  </div>
+                </div>
+              )}
+              {partner.socialVibe && (
+                <div className="context-row">
+                  <span className="c-icon">😎</span>
+                  <div className="c-text">
+                    <span className="c-label">Vibe</span>
+                    <span className="c-value">{partner.socialVibe}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+            {compatReasons.length > 0 && (
+              <div className="context-compat">
+                <span className="c-label">You both:</span>
+                <ul>
+                  {compatReasons.slice(0, 2).map((r, i) => <li key={i}>{r}</li>)}
+                </ul>
+              </div>
+            )}
           </div>
         )}
 

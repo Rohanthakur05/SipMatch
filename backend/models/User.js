@@ -114,6 +114,28 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    // ── Discovery Preferences (saved from Settings page) ────────────────
+    discoveryPreferences: {
+      ageMin:      { type: Number, default: 21 },
+      ageMax:      { type: Number, default: 35 },
+      lookingFor:  { type: String, default: 'Dating' },
+    },
+    // ── Notification preferences ─────────────────────────────────────────
+    notifications: {
+      newMatch:     { type: Boolean, default: true },
+      newMessage:   { type: Boolean, default: true },
+      profileLike:  { type: Boolean, default: false },
+      appUpdates:   { type: Boolean, default: true },
+      promotional:  { type: Boolean, default: false },
+    },
+    // ── Privacy preferences ───────────────────────────────────────────────
+    privacy: {
+      showDistance:     { type: Boolean, default: true },
+      showAge:          { type: Boolean, default: true },
+      showOnlineStatus: { type: Boolean, default: true },
+      profileVisibility:{ type: Boolean, default: true },
+      readReceipts:     { type: Boolean, default: true },
+    },
   },
   {
     timestamps: true,
@@ -122,3 +144,4 @@ const userSchema = new mongoose.Schema(
 
 const User = mongoose.model('User', userSchema);
 module.exports = User;
+

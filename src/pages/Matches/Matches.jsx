@@ -122,14 +122,28 @@ function MatchCard({ match, onChat }) {
           </div>
         )}
 
-        {/* Last message or first compatibility reason */}
-        <div className="match-preview">
-          {lastMessage
-            ? lastMessage.length > 60
-              ? lastMessage.slice(0, 60) + '…'
-              : lastMessage
-            : compatibilityReasons?.[0] || 'Start the conversation!'}
-        </div>
+        {/* Last message or detailed compatibility info */}
+        {lastMessage ? (
+          <div className="match-preview">
+            {lastMessage.length > 60 ? lastMessage.slice(0, 60) + '…' : lastMessage}
+          </div>
+        ) : (
+          <div className="match-reasons-preview">
+            {partner?.signatureSip && (
+              <div className="reason-line">🍹 <strong>Sip:</strong> {partner.signatureSip}</div>
+            )}
+            {compatibilityReasons?.length > 0 ? (
+              <>
+                <div className="reason-line"><strong>You both:</strong></div>
+                {compatibilityReasons.slice(0, 3).map((r, i) => (
+                  <div key={i} className="reason-line-item">✓ {r}</div>
+                ))}
+              </>
+            ) : (
+              <div className="match-preview">Start the conversation!</div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Chat button */}
