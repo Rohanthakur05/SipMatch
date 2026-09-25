@@ -4,7 +4,7 @@ import Login from './pages/Auth/Login';
 import Signup from './pages/Auth/Signup';
 import Onboarding from './pages/Onboarding/Onboarding';
 import Discover from './pages/Discover/Discover';
-// import Matches from './pages/Matches/Matches';
+import Matches from './pages/Matches/Matches';
 import Chat from './pages/Chat/Chat';
 import ChatRoom from './pages/Chat/ChatRoom';
 import Profile from './pages/Profile/Profile';
@@ -26,7 +26,7 @@ export default function App() {
           <Route path="/signup" element={<Signup />} />
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/discover" element={<Discover />} />
-          {/* <Route path="/matches" element={<Matches />} /> */}
+          <Route path="/matches" element={<Matches />} />
           <Route path="/chat" element={<Chat />} />
           <Route path="/chat/:id" element={<ChatRoom />} />
           <Route path="/profile" element={<Profile />} />
