@@ -463,7 +463,7 @@ export default function Discover() {
           matchData={matchData}
           onChat={() => {
             setShowMatchModal(false);
-            navigate('/chat');
+            navigate(matchData.matchId ? `/chat/${matchData.matchId}` : '/chat');
           }}
           onClose={() => setShowMatchModal(false)}
         />

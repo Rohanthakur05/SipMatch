@@ -1,208 +1,463 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { FiChevronLeft, FiMoreVertical, FiSmile, FiSend, FiCheck, FiCheckCircle } from 'react-icons/fi';
+import {
+  FiChevronLeft, FiMoreVertical, FiSend, FiCheck, FiCheckCircle,
+} from 'react-icons/fi';
+import { connectSocket, getSocket } from '../../utils/socketService';
 import './Chat.css';
 
-// Mock Data
-const userProfile = {
-  name: 'Sarah Jenkins',
-  image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80',
-  isOnline: true
+const API_BASE = 'http://localhost:5000/api';
+const MAX_MSG_LEN = 2000;
+const TYPING_DEBOUNCE_MS = 1200;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const getPartnerPhoto = (partner) =>
+  partner?.primaryPhoto || partner?.profilePhotos?.[0] || null;
+
+const formatTime = (dateStr) => {
+  if (!dateStr) return '';
+  return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
-const initialMessages = [
-  { id: 1, text: 'Hey there! Nice to match with you.', sender: 'them', time: '10:30 AM', date: 'Today' },
-  { id: 2, text: 'Hi Sarah! I see we both love whiskey and live music.', sender: 'me', time: '10:35 AM', date: 'Today', status: 'read' },
-  { id: 3, text: 'Yes! Are you a bourbon or scotch fan?', sender: 'them', time: '10:38 AM', date: 'Today' },
-  { id: 4, text: 'Definitely bourbon. Nothing beats a good Old Fashioned.', sender: 'me', time: '10:45 AM', date: 'Today', status: 'read' },
-  { id: 5, text: 'That sounds like a great plan! 🍷', sender: 'them', time: '10:50 AM', date: 'Today' }
-];
+const formatDateDivider = (dateStr) => {
+  if (!dateStr) return '';
+  const d   = new Date(dateStr);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return 'Today';
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+};
 
-const matchReasons = [
-  'Both enjoy whiskey',
-  'Both love live music',
-  'Similar music taste'
-];
+/** Build conversation starters from actual shared compatibility data */
+const buildStarters = (compatibilityReasons = [], partner) => {
+  const starters = [];
+  if (!compatibilityReasons || compatibilityReasons.length === 0) return starters;
 
-const conversationStarters = [
-  "What's your go-to drink on a Friday night?",
-  "Best cocktail you've ever tried?",
-  "Whiskey or wine?",
-  "Favorite place for a night out?"
-];
+  compatibilityReasons.forEach((reason) => {
+    const r = reason.toLowerCase();
+    if (r.includes('rooftop'))       starters.push("You both love rooftop bars — which is your favourite spot?");
+    else if (r.includes('whiskey') || r.includes('bourbon')) starters.push("You both love whiskey — bourbon or scotch?");
+    else if (r.includes('music'))    starters.push("You have similar music taste — what's been on repeat lately?");
+    else if (r.includes('jazz'))     starters.push("Fellow jazz lover! Best live jazz set you've been to?");
+    else if (r.includes('cocktail')) starters.push("Fellow cocktail fan — what's your signature order?");
+    else if (r.includes('sip'))      starters.push(`I see we share the same signature sip — ${partner?.signatureSip || 'great taste'}! ✨`);
+    else if (r.includes('vibe'))     starters.push("Same social vibe — small intimate gatherings or big crowds?");
+    else if (r.includes('interest')) starters.push("What are you up to this weekend?");
+  });
 
+  // Fallback starters that always make sense
+  starters.push(
+    "What's your go-to drink on a Friday night?",
+    "Best bar you've discovered recently?",
+  );
+
+  // Unique, max 4
+  return [...new Map(starters.map((s) => [s, s])).values()].slice(0, 4);
+};
+
+// ── ChatRoom component ────────────────────────────────────────────────────────
 export default function ChatRoom() {
-  const navigate = useNavigate();
-  const { id } = useParams(); // Could use id to fetch specific user
-  
-  const [messages, setMessages] = useState(initialMessages);
-  const [newMessage, setNewMessage] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const messagesEndRef = useRef(null);
+  const navigate   = useNavigate();
+  const { id: matchId } = useParams();
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  // Match / partner state
+  const [match,    setMatch]   = useState(null);
+  const [partner,  setPartner] = useState(null);
+  const [myId,     setMyId]    = useState(null);
 
+  // Message state
+  const [messages,    setMessages]    = useState([]);
+  const [newMessage,  setNewMessage]  = useState('');
+  const [isTyping,    setIsTyping]    = useState(false);   // partner is typing
+  const [sending,     setSending]     = useState(false);
+  const [loadingMsgs, setLoadingMsgs] = useState(true);
+  const [msgError,    setMsgError]    = useState('');
+
+  // UI state
+  const [partnerOnline, setPartnerOnline] = useState(false);
+  const [inputError,    setInputError]    = useState('');
+  const [allRead,       setAllRead]       = useState(false);
+
+  const messagesEndRef  = useRef(null);
+  const typingTimerRef  = useRef(null);
+  const isTypingRef     = useRef(false); // debounce guard
+  const socketRef       = useRef(null);
+  const inputRef        = useRef(null);
+
+  // ── Fetch match info + message history ─────────────────────────────────────
+  const loadMatchAndMessages = useCallback(async () => {
+    const token = localStorage.getItem('token');
+    if (!token) { navigate('/login'); return; }
+
+    try {
+      // 1. Load match metadata
+      const mRes  = await fetch(`${API_BASE}/matches/${matchId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const mData = await mRes.json();
+      if (!mRes.ok) throw new Error(mData.message || 'Failed to load match.');
+
+      setMatch(mData.match);
+      setPartner(mData.match.partner);
+      setMyId(mData.match.self?._id?.toString());
+
+      // 2. Load message history
+      setLoadingMsgs(true);
+      setMsgError('');
+      const msgRes  = await fetch(`${API_BASE}/messages/${matchId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const msgData = await msgRes.json();
+      if (!msgRes.ok) throw new Error(msgData.message || 'Failed to load messages.');
+      setMessages(msgData.messages || []);
+    } catch (err) {
+      setMsgError(err.message);
+    } finally {
+      setLoadingMsgs(false);
+    }
+  }, [matchId, navigate]);
+
+  useEffect(() => { loadMatchAndMessages(); }, [loadMatchAndMessages]);
+
+  // ── Connect socket and join match room ──────────────────────────────────────
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, isTyping]);
+    const token = localStorage.getItem('token');
+    if (!token || !matchId) return;
 
-  const handleSend = (e) => {
-    e.preventDefault();
-    if (!newMessage.trim()) return;
+    const socket = connectSocket(token);
+    socketRef.current = socket;
 
-    const msg = {
-      id: Date.now(),
-      text: newMessage,
-      sender: 'me',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      date: 'Today',
-      status: 'sent'
+    // Join the match room
+    const onConnect = () => {
+      socket.emit('join_match', { matchId });
     };
 
-    setMessages([...messages, msg]);
-    setNewMessage('');
-    
-    // Simulate them typing and replying
-    setTimeout(() => {
-      // Mark as read
-      setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, status: 'read' } : m));
-      setIsTyping(true);
-      
-      setTimeout(() => {
-        setIsTyping(false);
-        setMessages(prev => [...prev, {
-          id: Date.now() + 1,
-          text: 'Haha, I agree! 😄',
-          sender: 'them',
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          date: 'Today'
-        }]);
-      }, 2000);
-    }, 1000);
+    if (socket.connected) onConnect();
+    else socket.on('connect', onConnect);
+
+    // ── Incoming message ─────────────────────────────────────────────────
+    const handleReceive = ({ message }) => {
+      if (message.match?.toString() !== matchId) return;
+      setMessages((prev) => {
+        // Deduplicate (our own messages arrive back via broadcast)
+        if (prev.some((m) => m._id?.toString() === message._id?.toString())) return prev;
+        return [...prev, message];
+      });
+
+      // Immediately emit read receipt since this room is open
+      socket.emit('message_read', { matchId });
+    };
+
+    // ── Read receipts ────────────────────────────────────────────────────
+    const handleRead = ({ matchId: mid, readBy }) => {
+      if (mid !== matchId) return;
+      setMessages((prev) =>
+        prev.map((m) => (m.sender?.toString() !== readBy ? { ...m, read: true } : m))
+      );
+      setAllRead(true);
+    };
+
+    // ── Typing indicators ────────────────────────────────────────────────
+    const handleTypingStart = ({ matchId: mid }) => {
+      if (mid === matchId) setIsTyping(true);
+    };
+    const handleTypingStop  = ({ matchId: mid }) => {
+      if (mid === matchId) setIsTyping(false);
+    };
+
+    // ── Online status ────────────────────────────────────────────────────
+    const handleOnlineStatus = ({ userId, isOnline }) => {
+      if (userId?.toString() === partner?._id?.toString()) setPartnerOnline(isOnline);
+    };
+    const handleOnline  = ({ userId }) => {
+      if (userId?.toString() === partner?._id?.toString()) setPartnerOnline(true);
+    };
+    const handleOffline = ({ userId }) => {
+      if (userId?.toString() === partner?._id?.toString()) setPartnerOnline(false);
+    };
+
+    const handleSocketError = ({ message }) => {
+      setMsgError(message);
+    };
+
+    socket.on('receive_message',   handleReceive);
+    socket.on('message_read',      handleRead);
+    socket.on('typing_start',      handleTypingStart);
+    socket.on('typing_stop',       handleTypingStop);
+    socket.on('user_online_status', handleOnlineStatus);
+    socket.on('user_online',       handleOnline);
+    socket.on('user_offline',      handleOffline);
+    socket.on('error',             handleSocketError);
+
+    return () => {
+      socket.off('connect',          onConnect);
+      socket.off('receive_message',  handleReceive);
+      socket.off('message_read',     handleRead);
+      socket.off('typing_start',     handleTypingStart);
+      socket.off('typing_stop',      handleTypingStop);
+      socket.off('user_online_status', handleOnlineStatus);
+      socket.off('user_online',      handleOnline);
+      socket.off('user_offline',     handleOffline);
+      socket.off('error',            handleSocketError);
+      socket.emit('leave_match', { matchId });
+    };
+  }, [matchId, partner]);
+
+  // ── Mark messages as read when room opens ──────────────────────────────────
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (socket?.connected && matchId && messages.length > 0) {
+      socket.emit('message_read', { matchId });
+    }
+  }, [matchId, messages.length]);
+
+  // ── Auto-scroll ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isTyping]);
+
+  // ── Typing indicator emission ──────────────────────────────────────────────
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    setNewMessage(value);
+    setInputError('');
+
+    const socket = socketRef.current;
+    if (!socket?.connected) return;
+
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
+      socket.emit('typing_start', { matchId });
+    }
+
+    clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {
+      isTypingRef.current = false;
+      socket.emit('typing_stop', { matchId });
+    }, TYPING_DEBOUNCE_MS);
   };
 
-  const sendStarter = (text) => {
-    setNewMessage(text);
+  // ── Send message ───────────────────────────────────────────────────────────
+  const handleSend = (e) => {
+    e?.preventDefault();
+    const content = newMessage.trim();
+
+    if (!content) return;
+    if (content.length > MAX_MSG_LEN) {
+      setInputError(`Message too long (${content.length}/${MAX_MSG_LEN})`);
+      return;
+    }
+
+    const socket = socketRef.current;
+    if (!socket?.connected) {
+      setInputError('Not connected. Reconnecting…');
+      return;
+    }
+
+    setSending(true);
+    setInputError('');
+
+    // Stop typing indicator
+    clearTimeout(typingTimerRef.current);
+    isTypingRef.current = false;
+    socket.emit('typing_stop', { matchId });
+
+    // Emit via Socket.io (server broadcasts back including to sender)
+    socket.emit('send_message', { matchId, content });
+
+    setNewMessage('');
+    setSending(false);
+    inputRef.current?.focus();
   };
+
+  const handleStarter = (text) => {
+    setNewMessage(text);
+    inputRef.current?.focus();
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  // ── Date divider grouping ──────────────────────────────────────────────────
+  const groupMessagesByDate = (msgs) => {
+    const groups = [];
+    let lastDate = null;
+    msgs.forEach((msg) => {
+      const d = new Date(msg.createdAt).toDateString();
+      if (d !== lastDate) {
+        groups.push({ type: 'divider', label: formatDateDivider(msg.createdAt), key: `div-${d}` });
+        lastDate = d;
+      }
+      groups.push({ type: 'message', msg, key: msg._id || msg.createdAt });
+    });
+    return groups;
+  };
+
+  // ── Compatibility + starters ───────────────────────────────────────────────
+  const compatReasons  = match?.compatibilityReasons || [];
+  const compatScore    = match?.compatibilityScore   || 0;
+  const starters       = buildStarters(compatReasons, partner);
+  const showStarters   = messages.length < 6 && !isTyping;
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+  const partnerPhoto = getPartnerPhoto(partner);
+  const partnerName  = partner?.name || 'Match';
 
   return (
     <div className="chatroom-container animate-fadeIn">
-      {/* Header */}
+      {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="chatroom-header">
         <div className="header-left">
-          <button className="back-btn" onClick={() => navigate(-1)}>
+          <button className="back-btn" onClick={() => navigate('/chat')} id="btn-back-chat">
             <FiChevronLeft />
           </button>
-          
-          <div className="header-profile" onClick={() => navigate('/profile')}>
-            <img src={userProfile.image} alt={userProfile.name} className="header-avatar" />
+
+          <div className="header-profile">
+            {partnerPhoto
+              ? <img src={partnerPhoto} alt={partnerName} className="header-avatar" />
+              : <div className="header-avatar avatar-placeholder">{partnerName[0]}</div>
+            }
             <div className="header-info">
-              <span className="header-name">{userProfile.name}</span>
-              {userProfile.isOnline && (
-                <span className="header-status">
-                  <span className="status-dot"></span> Online
-                </span>
-              )}
+              <span className="header-name">{partnerName}</span>
+              <span className="header-status">
+                {partnerOnline
+                  ? <><span className="status-dot" /> Online</>
+                  : <span style={{ color: 'var(--text-muted)' }}>Active recently</span>
+                }
+              </span>
             </div>
           </div>
         </div>
-        
+
         <div className="header-actions">
-          <button className="icon-btn">
-            <FiMoreVertical />
-          </button>
+          {compatScore > 0 && (
+            <span className="header-compat">❤️ {compatScore}%</span>
+          )}
+          <button className="icon-btn"><FiMoreVertical /></button>
         </div>
       </div>
 
-      {/* Messages Area */}
+      {/* ── Messages area ───────────────────────────────────────────────── */}
       <div className="messages-area">
-        {/* Premium Feature: Match Reminder */}
-        <div className="match-reminder glass">
-          <h3 className="reminder-title">Why you matched</h3>
-          <div className="reminder-list">
-            {matchReasons.map((reason, index) => (
-              <div key={index} className="reminder-item">
-                <span><FiCheckCircle /></span>
-                {reason}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="date-divider">Today</div>
-
-        {messages.map((msg) => (
-          <div key={msg.id} className={`message-wrapper ${msg.sender}`}>
-            <div className="message-bubble">
-              {msg.text}
-            </div>
-            <div className="message-meta">
-              <span className="time">{msg.time}</span>
-              {msg.sender === 'me' && (
-                <span className={`read-status ${msg.status === 'read' ? 'read' : ''}`}>
-                  {msg.status === 'read' ? <FiCheckCircle /> : <FiCheck />}
-                </span>
-              )}
-            </div>
-          </div>
-        ))}
-
-        {isTyping && (
-          <div className="message-wrapper them animate-fadeInUp">
-            <div className="typing-indicator">
-              <div className="typing-dot"></div>
-              <div className="typing-dot"></div>
-              <div className="typing-dot"></div>
+        {/* Match reminder / compatibility card */}
+        {compatReasons.length > 0 && (
+          <div className="match-reminder glass">
+            <h3 className="reminder-title">You matched because…</h3>
+            <div className="reminder-list">
+              {compatReasons.slice(0, 3).map((reason, i) => (
+                <div key={i} className="reminder-item">
+                  <span><FiCheckCircle /></span>
+                  {reason}
+                </div>
+              ))}
             </div>
           </div>
         )}
-        
+
+        {/* Loading / error states */}
+        {loadingMsgs ? (
+          <div className="messages-loading">
+            <div className="loading-dots">
+              <div className="typing-dot" />
+              <div className="typing-dot" />
+              <div className="typing-dot" />
+            </div>
+            <span>Loading messages…</span>
+          </div>
+        ) : msgError ? (
+          <div className="messages-error">
+            <p>{msgError}</p>
+            <button onClick={loadMatchAndMessages}>Retry</button>
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="empty-conversation">
+            <div className="empty-conversation-icon">🍸</div>
+            <p>No messages yet. Say hi!</p>
+          </div>
+        ) : null}
+
+        {/* Message list with date dividers */}
+        {groupMessagesByDate(messages).map((item) => {
+          if (item.type === 'divider') {
+            return <div key={item.key} className="date-divider">{item.label}</div>;
+          }
+          const msg    = item.msg;
+          const isMine = msg.sender?.toString() === myId;
+          const side   = isMine ? 'sent' : 'received';
+
+          return (
+            <div key={item.key} className={`message-wrapper ${side}`}>
+              <div className="message-bubble">{msg.content}</div>
+              <div className="message-meta">
+                <span className="time">{formatTime(msg.createdAt)}</span>
+                {isMine && (
+                  <span className={`read-status ${msg.read ? 'read' : ''}`}>
+                    {msg.read ? <FiCheckCircle /> : <FiCheck />}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Partner typing indicator */}
+        {isTyping && (
+          <div className="message-wrapper received animate-fadeInUp">
+            <div className="typing-indicator">
+              <div className="typing-dot" />
+              <div className="typing-dot" />
+              <div className="typing-dot" />
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Premium Feature: Conversation Starters */}
-      {messages.length < 10 && !isTyping && (
+      {/* ── Conversation starters ────────────────────────────────────────── */}
+      {showStarters && starters.length > 0 && (
         <div className="starters-container">
-          {conversationStarters.slice(0, 2).map((starter, i) => (
-            <button 
-              key={i} 
+          {starters.map((s, i) => (
+            <button
+              key={i}
+              id={`starter-${i}`}
               className="starter-btn"
-              onClick={() => sendStarter(starter)}
+              onClick={() => handleStarter(s)}
             >
-              "{starter}"
+              "{s}"
             </button>
           ))}
         </div>
       )}
 
-      {/* Input Area */}
+      {/* ── Input area ──────────────────────────────────────────────────── */}
       <form className="chat-input-area" onSubmit={handleSend}>
         <div className="input-wrapper">
-          <div className="input-actions">
-            <button type="button">
-              <FiSmile />
-            </button>
-          </div>
           <textarea
+            id="message-input"
+            ref={inputRef}
             className="message-input"
-            placeholder="Type a message..."
+            placeholder="Type a message…"
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
             rows={1}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend(e);
-              }
-            }}
+            maxLength={MAX_MSG_LEN}
+            disabled={sending}
           />
         </div>
-        <button 
-          type="submit" 
-          className={`send-btn ${!newMessage.trim() ? 'disabled' : ''}`}
-          disabled={!newMessage.trim()}
+        {inputError && <div className="input-error">{inputError}</div>}
+        <button
+          id="btn-send-message"
+          type="submit"
+          className={`send-btn ${!newMessage.trim() || sending ? 'disabled' : ''}`}
+          disabled={!newMessage.trim() || sending}
         >
           <FiSend />
         </button>
